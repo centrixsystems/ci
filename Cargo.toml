@@ -1,0 +1,12 @@
+[package]
+name = "centrix-ci"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+dagger-sdk = "0.19"
+tokio = { version = "1", features = ["full"] }
+clap = { version = "4", features = ["derive"] }
+eyre = "0.6"
+color-eyre = "0.6"
