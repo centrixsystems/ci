@@ -1,0 +1,17 @@
+#!/bin/bash
+# Enforce author identity
+AUTHOR_NAME=$(git config user.name)
+
+if [ "$AUTHOR_NAME" != "centrix-luke" ]; then
+    echo "ERROR: Git author must be 'centrix-luke', got '$AUTHOR_NAME'"
+    echo "Run: git config user.name 'centrix-luke'"
+    exit 1
+fi
+
+# Check for Claude attribution in staged files
+if git diff --cached --name-only | xargs grep -l "Co-Authored-By.*[Cc]laude" 2>/dev/null; then
+    echo "ERROR: Claude attribution found in staged files. Company policy prohibits this."
+    exit 1
+fi
+
+exit 0
