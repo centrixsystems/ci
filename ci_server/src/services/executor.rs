@@ -14,7 +14,7 @@ use erp_core::db::diesel_pool::DieselPool;
 
 use crate::config::CiConfig;
 use crate::schema::{ci_builds, ci_projects};
-use crate::services::step_executor;
+use crate::services::{github_service, step_executor};
 
 /// Run the executor loop forever. Spawned as a background tokio task.
 pub async fn run_executor(pool: Arc<DieselPool>, config: CiConfig) {
@@ -87,6 +87,19 @@ async fn poll_and_execute(pool: &DieselPool, config: &CiConfig) -> anyhow::Resul
 
     crate::metrics::build_status_changed("running");
 
+    // Post "pending" status to GitHub
+    let target_url = format!("{}/api/builds/{}", config.dashboard_url, build.id);
+    let _ = github_service::post_status(
+        &config.github_token,
+        &build.github_repo,
+        &build.commit_sha,
+        "pending",
+        "Build running",
+        &target_url,
+        "centrix-ci",
+    )
+    .await;
+
     // Parse pipeline config
     let pipeline = parse_pipeline(&build.pipeline_config);
     let build_start = Instant::now();
@@ -110,12 +123,12 @@ async fn poll_and_execute(pool: &DieselPool, config: &CiConfig) -> anyhow::Resul
             Ok(output) => {
                 let stderr = String::from_utf8_lossy(&output.stderr);
                 tracing::error!(build_id = build.id, "git clone failed: {stderr}");
-                finish_build(&mut conn, build.id, "failure", build_start, Some(&format!("git clone failed: {stderr}"))).await?;
+                finish_build(&mut conn, build.id, "failure", build_start, Some(&format!("git clone failed: {stderr}")), &build.github_repo, &build.commit_sha, config).await?;
                 return Ok(());
             }
             Err(e) => {
                 tracing::error!(build_id = build.id, "git clone error: {e}");
-                finish_build(&mut conn, build.id, "failure", build_start, Some(&format!("git clone error: {e}"))).await?;
+                finish_build(&mut conn, build.id, "failure", build_start, Some(&format!("git clone error: {e}")), &build.github_repo, &build.commit_sha, config).await?;
                 return Ok(());
             }
         }
@@ -261,7 +274,7 @@ async fn poll_and_execute(pool: &DieselPool, config: &CiConfig) -> anyhow::Resul
     }
 
     let final_status = if all_passed { "success" } else { "failure" };
-    finish_build(&mut conn, build.id, final_status, build_start, None).await?;
+    finish_build(&mut conn, build.id, final_status, build_start, None, &build.github_repo, &build.commit_sha, config).await?;
 
     // Cleanup cloned workspace (only if we cloned, not local_path)
     if pipeline.local_path.is_none() {
@@ -272,13 +285,16 @@ async fn poll_and_execute(pool: &DieselPool, config: &CiConfig) -> anyhow::Resul
     Ok(())
 }
 
-/// Update build to terminal status with timing.
+/// Update build to terminal status with timing, then post GitHub commit status.
 async fn finish_build(
     conn: &mut diesel_async::AsyncPgConnection,
     build_id: i64,
     status: &str,
     start: Instant,
     error_msg: Option<&str>,
+    github_repo: &str,
+    commit_sha: &str,
+    config: &CiConfig,
 ) -> anyhow::Result<()> {
     let duration = start.elapsed().as_millis() as i32;
 
@@ -303,6 +319,29 @@ async fn finish_build(
         duration_ms = duration,
         "Build finished"
     );
+
+    // Post final status to GitHub (maps CI status to GitHub status API values)
+    let gh_state = match status {
+        "success" => "success",
+        "failure" => "failure",
+        _ => "error",
+    };
+    let description = match (status, error_msg) {
+        (_, Some(msg)) => format!("Build #{build_id} failed: {}", &msg[..msg.len().min(140)]),
+        ("success", _) => format!("Build #{build_id} passed ({duration}ms)"),
+        _ => format!("Build #{build_id} {status}"),
+    };
+    let target_url = format!("{}/api/builds/{}", config.dashboard_url, build_id);
+    let _ = github_service::post_status(
+        &config.github_token,
+        github_repo,
+        commit_sha,
+        gh_state,
+        &description,
+        &target_url,
+        "centrix-ci",
+    )
+    .await;
 
     Ok(())
 }
