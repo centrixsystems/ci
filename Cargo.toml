@@ -1,12 +1,27 @@
-[package]
-name = "centrix-ci"
+[workspace]
+resolver = "2"
+members = [
+    "ci_pipeline",
+    "ci_server",
+]
+
+[workspace.package]
 version = "0.1.0"
 edition = "2021"
-publish = false
+authors = ["Centrix Systems"]
+license = "LGPL-3.0"
+repository = "https://github.com/centrixsystems/ci"
 
-[dependencies]
-dagger-sdk = "0.19"
-tokio = { version = "1", features = ["full"] }
-clap = { version = "4", features = ["derive"] }
-eyre = "0.6"
-color-eyre = "0.6"
+[workspace.lints.clippy]
+get_first = "allow"
+
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = 3
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3
