@@ -457,9 +457,10 @@ pub async fn seed_ci_module(conn: &mut AsyncPgConnection) -> anyhow::Result<()> 
 
     for (name, github_repo, default_branch, pipeline_json) in &projects {
         let name_escaped = name.replace('\'', "''");
+        let json_escaped = pipeline_json.replace('\'', "''");
         diesel::sql_query(format!(
             "INSERT INTO ci_projects (tenant_id, name, github_repo, default_branch, pipeline_config, active, create_date) \
-             VALUES ('{tenant_id}', '{name_escaped}', '{github_repo}', '{default_branch}', '{pipeline_json}'::jsonb, true, '{ts}') \
+             VALUES ('{tenant_id}', '{name_escaped}', '{github_repo}', '{default_branch}', '{json_escaped}'::jsonb, true, '{ts}') \
              ON CONFLICT DO NOTHING"
         ))
         .execute(conn)
