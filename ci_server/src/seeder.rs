@@ -8,6 +8,22 @@ use diesel_async::RunQueryDsl;
 ///
 /// Idempotent — uses ON CONFLICT DO NOTHING.
 pub async fn seed_ci_module(conn: &mut AsyncPgConnection) -> anyhow::Result<()> {
+    // Guard: skip if CI data already seeded (check for root menu)
+    #[derive(diesel::QueryableByName)]
+    struct CountRow {
+        #[diesel(sql_type = diesel::sql_types::BigInt)]
+        cnt: i64,
+    }
+    let existing: Vec<CountRow> = diesel::sql_query(
+        "SELECT COUNT(*) as cnt FROM ir_ui_menu WHERE xml_id = 'ci.menu_root_ci'"
+    )
+    .load(conn)
+    .await?;
+    if existing.get(0).map(|r| r.cnt).unwrap_or(0) > 0 {
+        tracing::info!("CI platform already seeded, skipping");
+        return Ok(());
+    }
+
     let ts = chrono::Utc::now()
         .format("%Y-%m-%d %H:%M:%S%:z")
         .to_string();
