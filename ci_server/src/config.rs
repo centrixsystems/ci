@@ -22,6 +22,8 @@ pub struct CiConfig {
     pub dormant_ttl_days: i64,
     /// Minutes of inactivity before environment goes dormant.
     pub idle_timeout_min: i64,
+    /// Directory for build workspaces (cloned repos, temp files).
+    pub workspace_dir: String,
 }
 
 impl CiConfig {
@@ -58,6 +60,8 @@ impl CiConfig {
             .ok()
             .and_then(|s| s.parse().ok())
             .unwrap_or(60);
+        let workspace_dir = std::env::var("CI_WORKSPACE_DIR")
+            .unwrap_or_else(|_| "/tmp/ci-workspace".to_string());
 
         if github_webhook_secret.is_empty() {
             tracing::warn!("CI_WEBHOOK_SECRET not set -- webhook signature validation disabled");
@@ -77,6 +81,7 @@ impl CiConfig {
             max_envs_global,
             dormant_ttl_days,
             idle_timeout_min,
+            workspace_dir,
         }
     }
 }

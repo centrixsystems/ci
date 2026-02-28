@@ -238,6 +238,16 @@ async fn main() -> anyhow::Result<()> {
 
     // CI router state
     let ci_config = config::CiConfig::from_env();
+
+    // Spawn build executor background task
+    {
+        let executor_pool = data_arc.diesel.clone();
+        let executor_config = ci_config.clone();
+        tokio::spawn(async move {
+            services::executor::run_executor(executor_pool, executor_config).await;
+        });
+    }
+
     let ci_state = routes::CiRouterState {
         pool: data_arc.diesel.clone(),
         config: ci_config,

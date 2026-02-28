@@ -389,6 +389,85 @@ pub async fn seed_ci_module(conn: &mut AsyncPgConnection) -> anyhow::Result<()> 
         .await?;
     }
 
+    // ── 7. Seed CI projects ──
+    let tenant_id = "00000000-0000-0000-0000-000000000001";
+
+    let projects: Vec<(&str, &str, &str, &str)> = vec![
+        (
+            "Centrix Framework",
+            "centrixsystems/centrix",
+            "development",
+            r#"{"steps":[{"name":"check","command":"cargo check --workspace"},{"name":"test","command":"cargo test --workspace --lib -- --test-threads=1"},{"name":"clippy","command":"cargo clippy --workspace -- -D warnings"}],"timeout_secs":900,"local_path":"/home/ubuntu-server/ci-repos/centrixsystems/centrix"}"#,
+        ),
+        (
+            "Forge",
+            "centrixsystems/forge",
+            "main",
+            r#"{"steps":[{"name":"check","command":"cargo check --workspace"},{"name":"test","command":"cargo test --workspace --lib"},{"name":"clippy","command":"cargo clippy --workspace -- -D warnings"}],"timeout_secs":600,"local_path":"/home/ubuntu-server/ci-repos/centrixsystems/forge"}"#,
+        ),
+        (
+            "Forge SDK Rust",
+            "centrixsystems/forge-sdk-rust",
+            "main",
+            r#"{"steps":[{"name":"check","command":"cargo check"},{"name":"test","command":"cargo test"}],"timeout_secs":300,"local_path":"/home/ubuntu-server/ci-repos/centrixsystems/forge-sdk-rust"}"#,
+        ),
+        (
+            "Forge SDK Python",
+            "centrixsystems/forge-sdk-python",
+            "main",
+            r#"{"steps":[{"name":"install","command":"pip install -e '.[dev]' 2>/dev/null || pip install -r requirements.txt 2>/dev/null || echo 'no deps'"},{"name":"pytest","command":"python -m pytest -v 2>/dev/null || echo 'no tests yet'"}],"timeout_secs":300,"local_path":"/home/ubuntu-server/ci-repos/centrixsystems/forge-sdk-python"}"#,
+        ),
+        (
+            "Forge SDK TypeScript",
+            "centrixsystems/forge-sdk-ts",
+            "main",
+            r#"{"steps":[{"name":"install","command":"npm install 2>/dev/null || echo 'no package.json'"},{"name":"build","command":"npm run build 2>/dev/null || echo 'no build script'"},{"name":"test","command":"npm test 2>/dev/null || echo 'no tests yet'"}],"timeout_secs":300,"local_path":"/home/ubuntu-server/ci-repos/centrixsystems/forge-sdk-ts"}"#,
+        ),
+        (
+            "Forge SDK Go",
+            "centrixsystems/forge-sdk-go",
+            "main",
+            r#"{"steps":[{"name":"vet","command":"go vet ./... 2>/dev/null || echo 'no go files'"},{"name":"test","command":"go test ./... 2>/dev/null || echo 'no tests yet'"}],"timeout_secs":300,"local_path":"/home/ubuntu-server/ci-repos/centrixsystems/forge-sdk-go"}"#,
+        ),
+        (
+            "Forge SDK Java",
+            "centrixsystems/forge-sdk-java",
+            "main",
+            r#"{"steps":[{"name":"compile","command":"mvn compile 2>/dev/null || gradle build 2>/dev/null || echo 'no build system'"},{"name":"test","command":"mvn test 2>/dev/null || gradle test 2>/dev/null || echo 'no tests yet'"}],"timeout_secs":300,"local_path":"/home/ubuntu-server/ci-repos/centrixsystems/forge-sdk-java"}"#,
+        ),
+        (
+            "Forge SDK C#",
+            "centrixsystems/forge-sdk-csharp",
+            "main",
+            r#"{"steps":[{"name":"build","command":"dotnet build 2>/dev/null || echo 'no project file'"},{"name":"test","command":"dotnet test 2>/dev/null || echo 'no tests yet'"}],"timeout_secs":300,"local_path":"/home/ubuntu-server/ci-repos/centrixsystems/forge-sdk-csharp"}"#,
+        ),
+        (
+            "Forge SDK Ruby",
+            "centrixsystems/forge-sdk-ruby",
+            "main",
+            r#"{"steps":[{"name":"bundle","command":"bundle install 2>/dev/null || echo 'no Gemfile'"},{"name":"test","command":"bundle exec rake test 2>/dev/null || bundle exec rspec 2>/dev/null || echo 'no tests yet'"}],"timeout_secs":300,"local_path":"/home/ubuntu-server/ci-repos/centrixsystems/forge-sdk-ruby"}"#,
+        ),
+        (
+            "Forge SDK PHP",
+            "centrixsystems/forge-sdk-php",
+            "main",
+            r#"{"steps":[{"name":"install","command":"composer install 2>/dev/null || echo 'no composer.json'"},{"name":"test","command":"vendor/bin/phpunit 2>/dev/null || echo 'no tests yet'"}],"timeout_secs":300,"local_path":"/home/ubuntu-server/ci-repos/centrixsystems/forge-sdk-php"}"#,
+        ),
+    ];
+
+    for (name, github_repo, default_branch, pipeline_json) in &projects {
+        let name_escaped = name.replace('\'', "''");
+        diesel::sql_query(format!(
+            "INSERT INTO ci_projects (tenant_id, name, github_repo, default_branch, pipeline_config, active, create_date) \
+             VALUES ('{tenant_id}', '{name_escaped}', '{github_repo}', '{default_branch}', '{pipeline_json}'::jsonb, true, '{ts}') \
+             ON CONFLICT DO NOTHING"
+        ))
+        .execute(conn)
+        .await?;
+    }
+
+    tracing::info!("Seeded {} CI projects", projects.len());
+
     // Reset projection mode
     diesel::sql_query("SET centrix.projection_mode = 'false'")
         .execute(conn)

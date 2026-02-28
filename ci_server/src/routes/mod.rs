@@ -30,6 +30,8 @@ pub fn ci_router(state: CiRouterState) -> Router {
         // Webhook
         .route("/webhook/github", post(webhook_handler))
         // Build API
+        .route("/api/builds", get(list_builds_handler))
+        .route("/api/builds/trigger", post(trigger_build_handler))
         .route("/api/builds/{build_id}", get(get_build))
         .route("/api/builds/latest", get(get_latest_build))
         // KPI API
@@ -60,6 +62,46 @@ async fn webhook_handler(
 }
 
 // ── Build API ──
+
+async fn trigger_build_handler(
+    State(state): State<CiRouterState>,
+    Json(req): Json<api::TriggerRequest>,
+) -> Result<(StatusCode, Json<api::TriggerResponse>), StatusCode> {
+    let mut conn = state
+        .pool
+        .get()
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    api::trigger_build(&mut conn, req)
+        .await
+        .map(|r| (StatusCode::CREATED, Json(r)))
+        .map_err(|e| {
+            tracing::error!("Trigger build error: {e}");
+            StatusCode::BAD_REQUEST
+        })
+}
+
+#[derive(serde::Deserialize)]
+pub struct ListBuildsQuery {
+    pub limit: Option<i64>,
+}
+
+async fn list_builds_handler(
+    State(state): State<CiRouterState>,
+    Query(query): Query<ListBuildsQuery>,
+) -> Result<Json<Vec<api::BuildJson>>, StatusCode> {
+    let mut conn = state
+        .pool
+        .get()
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    api::list_builds(&mut conn, query.limit.unwrap_or(20))
+        .await
+        .map(Json)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
 
 async fn get_build(
     State(state): State<CiRouterState>,
